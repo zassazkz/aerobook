@@ -4,7 +4,7 @@ from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.contrib.auth import get_user_model
-from core.models import Airport, Airplane, Flight, Seat
+from core.models import Airport, Airplane, Flight, Seat, BookedSeat
 
 User = get_user_model()
 
@@ -23,7 +23,7 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS('Superuser created'))
 
-        # 2. Create Airports
+        # 2. Create Airports (Existing + New)
         airports_data = [
             {'iata_code': 'ALA', 'name': 'Almaty International Airport', 'city': 'Almaty', 'country': 'Kazakhstan'},
             {'iata_code': 'NQZ', 'name': 'Nursultan Nazarbayev International Airport', 'city': 'Astana', 'country': 'Kazakhstan'},
@@ -31,16 +31,20 @@ class Command(BaseCommand):
             {'iata_code': 'IST', 'name': 'Istanbul Airport', 'city': 'Istanbul', 'country': 'Turkey'},
             {'iata_code': 'FRA', 'name': 'Frankfurt Airport', 'city': 'Frankfurt', 'country': 'Germany'},
             {'iata_code': 'JFK', 'name': 'John F. Kennedy International Airport', 'city': 'New York', 'country': 'USA'},
+            {'iata_code': 'LHR', 'name': 'Heathrow Airport', 'city': 'London', 'country': 'UK'},
+            {'iata_code': 'CDG', 'name': 'Charles de Gaulle Airport', 'city': 'Paris', 'country': 'France'},
+            {'iata_code': 'SVO', 'name': 'Sheremetyevo Airport', 'city': 'Moscow', 'country': 'Russia'},
+            {'iata_code': 'PEK', 'name': 'Beijing Capital Airport', 'city': 'Beijing', 'country': 'China'},
         ]
 
-        airports = []
         for data in airports_data:
             airport, created = Airport.objects.get_or_create(iata_code=data['iata_code'], defaults=data)
-            airports.append(airport)
             if created:
                 self.stdout.write(f"Airport {airport.iata_code} created")
 
-        # 3. Create Airplanes and Seats
+        all_airports = list(Airport.objects.all())
+
+        # 3. Create Airplanes and Seats (Keep existing logic)
         airplanes_data = [
             {'model': 'Boeing 737', 'total_rows': 30, 'seats_per_row': 6, 'business_rows': 3},
             {'model': 'Airbus A320', 'total_rows': 28, 'seats_per_row': 6, 'business_rows': 4},
@@ -66,39 +70,72 @@ class Command(BaseCommand):
                 Seat.objects.bulk_create(seats)
                 self.stdout.write(f"Generated {len(seats)} seats for {airplane.model}")
 
-        # 4. Create Flights
-        airplanes = Airplane.objects.all()
-        routes = [
-            ('ALA', 'NQZ', 25000, 60000),
-            ('NQZ', 'ALA', 25000, 60000),
-            ('ALA', 'DXB', 80000, 150000),
-            ('DXB', 'ALA', 80000, 150000),
-            ('ALA', 'IST', 90000, 180000),
-            ('NQZ', 'FRA', 120000, 250000),
-            ('FRA', 'NQZ', 120000, 250000),
-            ('ALA', 'JFK', 200000, 450000),
-        ]
+        all_airplanes = list(Airplane.objects.all())
 
-        now = timezone.now()
+        # 4. Create Flights (New logic)
+        self.stdout.write('Deleting existing flights and booked seats...')
+        BookedSeat.objects.all().delete()
+        Flight.objects.all().delete()
+
+        domestic_codes = ['ALA', 'NQZ']
+        regional_codes = ['DXB', 'IST', 'SVO']
+        long_haul_codes = ['FRA', 'LHR', 'CDG', 'JFK', 'PEK']
+
+        routes = []
+        for origin in all_airports:
+            for destination in all_airports:
+                if origin.iata_code != destination.iata_code:
+                    routes.append((origin, destination))
+
+        self.stdout.write(f'Generating 10,000 flights for {len(routes)} routes...')
         
-        for origin_code, dest_code, min_price, max_price in routes:
-            origin = Airport.objects.get(iata_code=origin_code)
-            destination = Airport.objects.get(iata_code=dest_code)
+        flights_to_create = []
+        now = timezone.now()
+        total_to_generate = 10000
+
+        for i in range(total_to_generate):
+            origin, destination = random.choice(routes)
             
-            # Create a flight for some random day in the next 30 days
-            days_ahead = random.randint(1, 30)
-            departure_time = now + timedelta(days=days_ahead, hours=random.randint(0, 23))
-            arrival_time = departure_time + timedelta(hours=random.randint(2, 12))
+            # Categorize route
+            if origin.iata_code in long_haul_codes or destination.iata_code in long_haul_codes:
+                # Long-haul
+                price = Decimal(random.randint(200000, 600000))
+                duration_mins = random.randint(8 * 60, 14 * 60)
+            elif origin.iata_code in regional_codes or destination.iata_code in regional_codes:
+                # Regional
+                price = Decimal(random.randint(80000, 200000))
+                duration_mins = random.randint(4 * 60, 7 * 60)
+            else:
+                # Domestic
+                price = Decimal(random.randint(20000, 70000))
+                duration_mins = random.randint(1 * 60 + 30, 2 * 60)
+
+            # Add randomness to duration (±30 minutes)
+            duration_mins += random.randint(-30, 30)
             
-            Flight.objects.create(
-                airplane=random.choice(airplanes),
+            days_ahead = random.randint(1, 180)
+            departure_time = now + timedelta(days=days_ahead, hours=random.randint(0, 23), minutes=random.randint(0, 59))
+            arrival_time = departure_time + timedelta(minutes=duration_mins)
+
+            flights_to_create.append(Flight(
+                airplane=random.choice(all_airplanes),
                 origin=origin,
                 destination=destination,
                 departure_time=departure_time,
                 arrival_time=arrival_time,
-                price=Decimal(random.randint(min_price, max_price)),
+                price=price,
                 status='scheduled'
-            )
-            self.stdout.write(f"Flight {origin_code} -> {dest_code} created")
+            ))
+
+            if len(flights_to_create) >= 500:
+                Flight.objects.bulk_create(flights_to_create, batch_size=500)
+                flights_to_create = []
+                
+            if (i + 1) % 1000 == 0:
+                self.stdout.write(f"Created {i + 1} flights...")
+
+        # Create remaining
+        if flights_to_create:
+            Flight.objects.bulk_create(flights_to_create, batch_size=500)
 
         self.stdout.write(self.style.SUCCESS('Database seeding completed!'))
