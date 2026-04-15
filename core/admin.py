@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import User, Airport, Airplane, Flight, Seat, Booking, Passenger, BookedSeat, Extra, Payment, Cancellation
+from .models import User, Airport, Airplane, Flight, Seat, Booking, Passenger, BookedSeat, Extra, Payment, Cancellation, Airline, FlightSchedule, FlightInstance
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -10,6 +10,11 @@ class AirportAdmin(admin.ModelAdmin):
     list_display = ('name', 'iata_code', 'city', 'country')
     search_fields = ('iata_code', 'city')
 
+@admin.register(Airline)
+class AirlineAdmin(admin.ModelAdmin):
+    list_display = ('name', 'iata_code', 'country')
+    search_fields = ('iata_code', 'name')
+
 @admin.register(Airplane)
 class AirplaneAdmin(admin.ModelAdmin):
     list_display = ('model', 'total_rows', 'seats_per_row')
@@ -19,6 +24,17 @@ class FlightAdmin(admin.ModelAdmin):
     list_display = ('origin', 'destination', 'departure_time', 'status', 'price')
     list_filter = ('status',)
     search_fields = ('origin__iata_code', 'destination__iata_code')
+
+@admin.register(FlightSchedule)
+class FlightScheduleAdmin(admin.ModelAdmin):
+    list_display = ('flight_number', 'airline', 'origin', 'destination', 'is_active')
+    list_filter = ('is_active', 'airline')
+    search_fields = ('flight_number', 'origin__iata_code', 'destination__iata_code')
+
+@admin.register(FlightInstance)
+class FlightInstanceAdmin(admin.ModelAdmin):
+    list_display = ('schedule', 'date', 'status')
+    list_filter = ('status', 'date')
 
 @admin.register(Seat)
 class SeatAdmin(admin.ModelAdmin):

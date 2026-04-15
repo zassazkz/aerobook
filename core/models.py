@@ -17,6 +17,16 @@ class Airport(models.Model):
     city = models.CharField(max_length=100)
     country = models.CharField(max_length=100)
     iata_code = models.CharField(max_length=3, unique=True)
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.name} ({self.iata_code})"
+
+class Airline(models.Model):
+    iata_code = models.CharField(max_length=3, unique=True)
+    name = models.CharField(max_length=200)
+    country = models.CharField(max_length=100, blank=True)
     
     def __str__(self):
         return f"{self.name} ({self.iata_code})"
@@ -48,6 +58,36 @@ class Flight(models.Model):
     
     def __str__(self):
         return f"{self.origin.iata_code} to {self.destination.iata_code} ({self.departure_time})"
+
+class FlightSchedule(models.Model):
+    airline = models.ForeignKey(Airline, on_delete=models.CASCADE, related_name='flight_schedules')
+    origin = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name='departure_schedules')
+    destination = models.ForeignKey(Airport, on_delete=models.CASCADE, related_name='arrival_schedules')
+    airplane = models.ForeignKey(Airplane, on_delete=models.CASCADE, related_name='flight_schedules')
+    flight_number = models.CharField(max_length=20, unique=True)
+    departure_time = models.TimeField()
+    arrival_time = models.TimeField()
+    duration_minutes = models.IntegerField()
+    days_of_week = models.CharField(max_length=7, help_text="1234567 = Monday to Sunday")
+    economy_price = models.DecimalField(max_digits=10, decimal_places=2)
+    business_price = models.DecimalField(max_digits=10, decimal_places=2)
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return f"{self.airline.iata_code}{self.flight_number}: {self.origin.iata_code} to {self.destination.iata_code}"
+
+class FlightInstance(models.Model):
+    schedule = models.ForeignKey(FlightSchedule, on_delete=models.CASCADE, related_name='flight_instances')
+    date = models.DateField()
+    departure_datetime = models.DateTimeField()
+    arrival_datetime = models.DateTimeField()
+    status = models.CharField(max_length=20, choices=Flight.STATUS_CHOICES, default='scheduled')
+    
+    class Meta:
+        unique_together = [('schedule', 'date')]
+    
+    def __str__(self):
+        return f"{self.schedule.flight_number} on {self.date}"
 
 class Seat(models.Model):
     CLASS_CHOICES = [
